@@ -69,6 +69,10 @@ J(z)   = integral_0^z S_z(z')/(1+z')^3 dz'
 ```
 
 For `z > 2.5`, `S` and `J` are frozen and the derivatives of `S` vanish.
+At exactly `f_dyn_test53 = 0`, the parser remaps the interacting matter and
+vacuum densities to ordinary CDM and Lambda. This makes the nested limit use
+the unmodified CLASS perturbation sector instead of only matching the
+background equations.
 
 ## Repository layout
 

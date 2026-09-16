@@ -153,10 +153,10 @@ index fbdcdf2..0ca599f 100755
      dy[pba->index_bi_D_idm_iv] = y[pba->index_bi_D_prime_idm_iv];
      dy[pba->index_bi_D_prime_idm_iv] = -(a*H + a*Q_idm_iv/rho_M)*y[pba->index_bi_D_prime_idm_iv] 
 diff --git a/source/input.c b/source/input.c
-index b14a8f4..f3588f5 100644
+index b14a8f4..d8b8b49 100644
 --- a/source/input.c
 +++ b/source/input.c
-@@ -1405,6 +1405,12 @@ int input_read_parameters(
+@@ -1405,9 +1405,23 @@ int input_read_parameters(
      
      if (flag2 == _TRUE_)
        pba->beta_idm_iv = param2;   
@@ -169,7 +169,18 @@ index b14a8f4..f3588f5 100644
     
    }
  
-@@ -3330,6 +3336,7 @@ int input_default_params(
++  /* Make f_dyn=0 an exact nested LambdaCDM limit. */
++  if (pba->f_dyn_test53 == 0.0 && pba->Omega0_idm_iv != 0.0) {
++    pba->Omega0_cdm += pba->Omega0_idm_iv;
++    pba->Omega0_idm_iv = 0.0;
++    pba->Omega0_lambda += pba->Omega0_iv;
++    pba->Omega0_iv = 0.0;
++  }
++
+   if (pba->Omega0_fld != 0.) {
+ 
+     class_call(parser_read_string(pfc,
+@@ -3330,6 +3344,7 @@ int input_default_params(
    pba->cs2_fld = 1.;
    pba->alpha_idm_iv = 0.0;
    pba->beta_idm_iv = 0.0;
@@ -1281,123 +1292,3 @@ index 0000000..7e3e72f
 +  *J=test53_J_eval(z);
 +}
 +#endif
-diff --git a/test53_f0_limit.ini b/test53_f0_limit.ini
-new file mode 100644
-index 0000000..b33e4c6
---- /dev/null
-+++ b/test53_f0_limit.ini
-@@ -0,0 +1,36 @@
-+# Test53 geodesic interacting vacuum
-+# target class_iv commit ac627d54e9ce196a08878d1ba33999819925d19c
-+h = 0.689782657631
-+T_cmb = 2.7255
-+omega_b = 0.0223828000
-+omega_cdm = 0.
-+omega_idm_iv = 0.118327317147
-+f_iv = 1.
-+alpha_idm_iv = 0.
-+beta_idm_iv = 0.
-+f_dyn_test53 = 0.
-+N_ur = 2.03066666667
-+N_ncdm = 1
-+omega_ncdm = 0.0006451439
-+Omega_k = 0.
-+Omega_fld = 0.
-+Omega_scf = 0.
-+Omega_idm_dr = 0.
-+YHe = 0.2454006
-+tau_reio = 0.05430842
-+k_pivot = 0.05
-+A_s = 2.100549000e-09
-+n_s = 0.9660499
-+output = tCl,pCl,lCl,mPk
-+modes = s
-+lensing = yes
-+gauge = synchronous
-+P_k_ini type = analytic_Pk
-+l_max_scalars = 3000
-+non linear = halofit
-+write background = yes
-+write thermodynamics = yes
-+write primordial = yes
-+write parameters = yes
-+write warnings = yes
-+root = output/test53_f0_limit_
-diff --git a/test53_geodesic_bestfit.ini b/test53_geodesic_bestfit.ini
-new file mode 100644
-index 0000000..4df7d57
---- /dev/null
-+++ b/test53_geodesic_bestfit.ini
-@@ -0,0 +1,36 @@
-+# Test53 geodesic interacting vacuum
-+# target class_iv commit ac627d54e9ce196a08878d1ba33999819925d19c
-+h = 0.689782657631
-+T_cmb = 2.7255
-+omega_b = 0.0223828000
-+omega_cdm = 0.
-+omega_idm_iv = 0.118327317147
-+f_iv = 1.
-+alpha_idm_iv = 0.
-+beta_idm_iv = 0.
-+f_dyn_test53 = 0.191696487053
-+N_ur = 2.03066666667
-+N_ncdm = 1
-+omega_ncdm = 0.0006451439
-+Omega_k = 0.
-+Omega_fld = 0.
-+Omega_scf = 0.
-+Omega_idm_dr = 0.
-+YHe = 0.2454006
-+tau_reio = 0.05430842
-+k_pivot = 0.05
-+A_s = 2.100549000e-09
-+n_s = 0.9660499
-+output = tCl,pCl,lCl,mPk
-+modes = s
-+lensing = yes
-+gauge = synchronous
-+P_k_ini type = analytic_Pk
-+l_max_scalars = 3000
-+non linear = halofit
-+write background = yes
-+write thermodynamics = yes
-+write primordial = yes
-+write parameters = yes
-+write warnings = yes
-+root = output/test53_geodesic_bestfit_
-diff --git a/test53_lcdm_reference.ini b/test53_lcdm_reference.ini
-new file mode 100644
-index 0000000..fd64adb
---- /dev/null
-+++ b/test53_lcdm_reference.ini
-@@ -0,0 +1,30 @@
-+# Test53 LambdaCDM validation reference
-+h = 0.689782657631
-+T_cmb = 2.7255
-+omega_b = 0.0223828000
-+omega_cdm = 0.118327317147
-+N_ur = 2.03066666667
-+N_ncdm = 1
-+omega_ncdm = 0.0006451439
-+Omega_k = 0.
-+Omega_fld = 0.
-+Omega_scf = 0.
-+Omega_idm_dr = 0.
-+YHe = 0.2454006
-+tau_reio = 0.05430842
-+k_pivot = 0.05
-+A_s = 2.100549000e-09
-+n_s = 0.9660499
-+output = tCl,pCl,lCl,mPk
-+modes = s
-+lensing = yes
-+gauge = synchronous
-+P_k_ini type = analytic_Pk
-+l_max_scalars = 3000
-+non linear = halofit
-+write background = yes
-+write thermodynamics = yes
-+write primordial = yes
-+write parameters = yes
-+write warnings = yes
-+root = output/test53_lcdm_reference_
