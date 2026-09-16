@@ -153,10 +153,10 @@ index fbdcdf2..0ca599f 100755
      dy[pba->index_bi_D_idm_iv] = y[pba->index_bi_D_prime_idm_iv];
      dy[pba->index_bi_D_prime_idm_iv] = -(a*H + a*Q_idm_iv/rho_M)*y[pba->index_bi_D_prime_idm_iv] 
 diff --git a/source/input.c b/source/input.c
-index b14a8f4..d8b8b49 100644
+index b14a8f4..67d0516 100644
 --- a/source/input.c
 +++ b/source/input.c
-@@ -1405,9 +1405,23 @@ int input_read_parameters(
+@@ -1405,9 +1405,29 @@ int input_read_parameters(
      
      if (flag2 == _TRUE_)
        pba->beta_idm_iv = param2;   
@@ -171,16 +171,22 @@ index b14a8f4..d8b8b49 100644
  
 +  /* Make f_dyn=0 an exact nested LambdaCDM limit. */
 +  if (pba->f_dyn_test53 == 0.0 && pba->Omega0_idm_iv != 0.0) {
++    double omega_cdm_sync_floor = 0.0;
++    if (ppt->gauge == synchronous &&
++        pba->Omega0_cdm == ppr->Omega0_cdm_min_synchronous) {
++      omega_cdm_sync_floor = ppr->Omega0_cdm_min_synchronous;
++      pba->Omega0_cdm = 0.0;
++    }
 +    pba->Omega0_cdm += pba->Omega0_idm_iv;
 +    pba->Omega0_idm_iv = 0.0;
-+    pba->Omega0_lambda += pba->Omega0_iv;
++    pba->Omega0_lambda += pba->Omega0_iv + omega_cdm_sync_floor;
 +    pba->Omega0_iv = 0.0;
 +  }
 +
    if (pba->Omega0_fld != 0.) {
  
      class_call(parser_read_string(pfc,
-@@ -3330,6 +3344,7 @@ int input_default_params(
+@@ -3330,6 +3350,7 @@ int input_default_params(
    pba->cs2_fld = 1.;
    pba->alpha_idm_iv = 0.0;
    pba->beta_idm_iv = 0.0;
