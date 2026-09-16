@@ -1,0 +1,108 @@
+name: Test 53 reproducibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Run level
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - joint-fixed
+          - joint-profile
+      max_iterations:
+        description: Maximum LM iterations per start for joint runs
+        required: true
+        default: "30"
+        type: string
+      start_limit:
+        description: Starts per model; 0 uses every archived start
+        required: true
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test53-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      CLASS_DIR: ${{ github.workspace }}/.runtime/class_iv
+      PLANCK_DIR: ${{ github.workspace }}/.runtime/planck-lite-py
+
+    steps:
+      - name: Check out pipeline
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libgsl-dev
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build modified CLASS
+        run: bash scripts/build_class.sh "$CLASS_DIR"
+
+      - name: Fetch pinned Planck Plik-lite implementation
+        run: |
+          git clone https://github.com/heatherprince/planck-lite-py.git "$PLANCK_DIR"
+          git -C "$PLANCK_DIR" checkout --detach 2c0d0f67e59ce781654cf62dd7fb10757b0e60be
+
+      - name: Validate nested limit and likelihood inputs
+        run: |
+          python scripts/validate_test53.py \
+            --class-dir "$CLASS_DIR" \
+            --planck-dir "$PLANCK_DIR"
+
+      - name: Run joint Plik-lite and DESI DR2 fit
+        if: github.event_name == 'workflow_dispatch' && inputs.mode != 'smoke'
+        env:
+          CLASS: ${{ env.CLASS_DIR }}/class
+          TEST53_MAX_ITER: ${{ inputs.max_iterations }}
+          TEST53_START_LIMIT: ${{ inputs.start_limit }}
+        run: |
+          if [[ "${{ inputs.mode }}" == "joint-profile" ]]; then
+            export CALIBRATION=profile
+          else
+            export CALIBRATION=fixed
+          fi
+          python scripts/refit_joint_plik_bao.py 2>&1 | tee "joint_${CALIBRATION}_terminal.log"
+
+      - name: Collect provenance
+        if: always()
+        run: |
+          mkdir -p artifact/provenance
+          git -C "$CLASS_DIR" rev-parse HEAD > artifact/provenance/class-base-commit.txt
+          git -C "$PLANCK_DIR" rev-parse HEAD > artifact/provenance/planck-lite-commit.txt
+          sha256sum patches/*.diff model/test53_shape.h data/desi_dr2_bao13.csv \
+            > artifact/provenance/input-checksums.sha256
+          cp "$CLASS_DIR/class" artifact/class-test53 || true
+          cp -r results_joint_* artifact/ 2>/dev/null || true
+          cp joint_*_terminal.log artifact/ 2>/dev/null || true
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test53-${{ github.run_id }}
+          path: artifact
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,12 @@
+diff --git a/source/background.c b/source/background.c
+index 310e0f5..fbdcdf2 100755
+--- a/source/background.c
++++ b/source/background.c
+@@ -606,7 +606,6 @@ int background_w_fld(
+     // w_ede(a) taken from eq. (11) in 1706.00730
+     *w_fld = - dOmega_ede_over_da*a/Omega_ede/3./(1.-Omega_ede)+a_eq/3./(a+a_eq);
+     break;
+-  }
+ 
+   case IDM_IV:    
+     // w_fld in IDM_IV case (taken from eq. 51 in ...)
