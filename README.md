@@ -27,11 +27,22 @@ Open **Actions → Test 53 reproducibility → Run workflow** and select:
 
 - `smoke`: compile and run all deterministic checks;
 - `joint-fixed`: full Plik-lite + BAO fit with `A_planck = 1`;
-- `joint-profile`: same fit while profiling the calibration parameter.
+- `joint-profile`: same fit while profiling the calibration parameter;
+- `mcmc-profile`: samples the seven GEO cosmological parameters and `A_planck`
+  jointly with an affine-invariant MCMC ensemble.
 
 For the archived multi-start setup, leave `max_iterations = 30` and
-`start_limit = 0`. The joint modes are computationally expensive; `smoke` is
-the default so every push remains a fast integrity check.
+`start_limit = 0`. For the first MCMC run, leave `mcmc_walkers = 32`,
+`mcmc_steps = 400`, and `mcmc_burnin = 100`. The MCMC mode can take several
+hours; `smoke` remains the default so every push is a fast integrity check.
+
+The MCMC artifact contains the HDF5 chain, a posterior CSV/JSON summary,
+trace plot, corner plot, acceptance fractions, autocorrelation estimates,
+effective sample sizes, and split-Rhat diagnostics. `A_planck` is sampled with
+its Gaussian calibration prior instead of being merely fixed or profiled.
+The summary reports whether strict convergence thresholds were reached. If
+not, the chain must be extended before using its credible intervals in a
+paper.
 
 ## Likelihood definition
 
@@ -85,6 +96,7 @@ data/desi_dr2_bao13.csv            DESI DR2 BAO vector
 scripts/build_class.sh             deterministic source build
 scripts/validate_test53.py         nested-limit/input smoke checks
 scripts/refit_joint_plik_bao.py    joint numerical refit
+scripts/run_mcmc.py                  GEO posterior and convergence diagnostics
 ```
 
 ## Local reproduction

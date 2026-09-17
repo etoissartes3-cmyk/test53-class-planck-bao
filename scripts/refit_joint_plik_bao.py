@@ -177,10 +177,10 @@ def derive_bao(bg,th):
         pred[j+1]=DH[j+1]/rd
     return pred,rd,zd
 
-def residual(model,x,start_id=0):
+def residual(model,x,start_id=0,A_override=None):
     names=MODELS[model]["names"]
     p=dict(zip(names,map(float,x)))
-    key=(model,tuple(np.round(x,12)),CAL)
+    key=(model,tuple(np.round(x,12)),CAL,None if A_override is None else round(float(A_override),12))
     if key in cache:
         return cache[key]
 
@@ -208,7 +208,9 @@ def residual(model,x,start_id=0):
         bg=np.loadtxt(fbg); th=np.loadtxt(fth)
         bp,rd,zd=derive_bao(bg,th)
 
-        if CAL=="profile":
+        if A_override is not None:
+            A=float(A_override)
+        elif CAL=="profile":
             # A_planck affects only the Plik-lite block.
             def g(A):
                 rv=L.X_data-thvec/A**2

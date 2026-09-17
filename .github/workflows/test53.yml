@@ -15,6 +15,7 @@ on:
           - smoke
           - joint-fixed
           - joint-profile
+          - mcmc-profile
       max_iterations:
         description: Maximum LM iterations per start for joint runs
         required: true
@@ -24,6 +25,21 @@ on:
         description: Starts per model; 0 uses every archived start
         required: true
         default: "0"
+        type: string
+      mcmc_walkers:
+        description: MCMC walkers; use at least 16
+        required: true
+        default: "32"
+        type: string
+      mcmc_steps:
+        description: MCMC steps per walker
+        required: true
+        default: "400"
+        type: string
+      mcmc_burnin:
+        description: Initial MCMC steps discarded as burn-in
+        required: true
+        default: "100"
         type: string
 
 permissions:
@@ -79,12 +95,26 @@ jobs:
           TEST53_MAX_ITER: ${{ inputs.max_iterations }}
           TEST53_START_LIMIT: ${{ inputs.start_limit }}
         run: |
-          if [[ "${{ inputs.mode }}" == "joint-profile" ]]; then
+          if [[ "${{ inputs.mode }}" == "joint-profile" || "${{ inputs.mode }}" == "mcmc-profile" ]]; then
             export CALIBRATION=profile
           else
             export CALIBRATION=fixed
           fi
           python scripts/refit_joint_plik_bao.py 2>&1 | tee "joint_${CALIBRATION}_terminal.log"
+
+      - name: Run full MCMC posterior
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'mcmc-profile'
+        env:
+          CLASS: ${{ env.CLASS_DIR }}/class
+          PLANCK_DIR: ${{ env.PLANCK_DIR }}
+          CALIBRATION: profile
+          TEST53_MCMC_WALKERS: ${{ inputs.mcmc_walkers }}
+          TEST53_MCMC_STEPS: ${{ inputs.mcmc_steps }}
+          TEST53_MCMC_BURNIN: ${{ inputs.mcmc_burnin }}
+          TEST53_MCMC_PROCESSES: "4"
+          OMP_NUM_THREADS: "1"
+        run: |
+          python scripts/run_mcmc.py 2>&1 | tee mcmc_terminal.log
 
       - name: Collect provenance
         if: always()
@@ -96,7 +126,9 @@ jobs:
             > artifact/provenance/input-checksums.sha256
           cp "$CLASS_DIR/class" artifact/class-test53 || true
           cp -r results_joint_* artifact/ 2>/dev/null || true
+          cp -r results_mcmc_* artifact/ 2>/dev/null || true
           cp joint_*_terminal.log artifact/ 2>/dev/null || true
+          cp mcmc_terminal.log artifact/ 2>/dev/null || true
 
       - name: Upload results
         if: always()
