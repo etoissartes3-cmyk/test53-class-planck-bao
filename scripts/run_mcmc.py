@@ -37,6 +37,7 @@ NSTEPS = int(os.environ.get("TEST53_MCMC_STEPS", "400"))
 BURNIN = int(os.environ.get("TEST53_MCMC_BURNIN", "100"))
 NPROCS = int(os.environ.get("TEST53_MCMC_PROCESSES", "4"))
 SEED = int(os.environ.get("TEST53_MCMC_SEED", "530053"))
+RESUME = os.environ.get("TEST53_MCMC_RESUME", "0").strip().lower() in {"1", "true", "yes"}
 
 COSMO_NAMES = joint.MODELS["geo"]["names"]
 NAMES = COSMO_NAMES + ["A_planck"]
@@ -108,45 +109,96 @@ def main() -> None:
     fallback = np.array(joint.MODELS["geo"]["step"] + [joint.ACAL_SIG])
     scale = np.where(np.isfinite(fisher) & (fisher > 0), 0.25 * fisher, fallback)
 
-    rng = np.random.default_rng(SEED)
-    initial = np.empty((NWALKERS, len(NAMES)))
-    for i in range(NWALKERS):
-        for _ in range(10000):
-            candidate = center + rng.normal(size=len(NAMES)) * scale
-            if np.all(candidate > LOWER) and np.all(candidate < UPPER):
-                initial[i] = candidate
-                break
-        else:
-            raise RuntimeError("Could not initialize walkers inside prior bounds")
-
     backend_path = OUT / "chain.h5"
     backend = emcee.backends.HDFBackend(backend_path)
-    backend.reset(NWALKERS, len(NAMES))
+    resumed_from = 0
 
-    print(
-        f"Starting Test 53 MCMC: walkers={NWALKERS}, steps={NSTEPS}, "
-        f"burn-in={BURNIN}, processes={NPROCS}",
-        flush=True,
-    )
-    context = mp.get_context("fork")
-    with context.Pool(processes=NPROCS, initializer=silence_worker_log) as pool:
+    if RESUME:
+        if not backend_path.is_file():
+            raise SystemExit(f"Resume requested but checkpoint is missing: {backend_path}")
+        existing_chain = backend.get_chain()
+        if existing_chain.ndim != 3 or existing_chain.shape[1:] != (NWALKERS, len(NAMES)):
+            raise SystemExit(
+                "Checkpoint shape is incompatible with the requested walkers or parameter count: "
+                f"{existing_chain.shape}"
+            )
+        resumed_from = int(backend.iteration)
+        if resumed_from <= 0:
+            raise SystemExit("Resume requested but the checkpoint contains no completed steps")
+        state = backend.get_last_sample()
+        print(
+            f"Resuming Test 53 MCMC from {resumed_from} saved steps; "
+            f"target={NSTEPS}, walkers={NWALKERS}, burn-in={BURNIN}, processes={NPROCS}",
+            flush=True,
+        )
+    else:
+        rng = np.random.default_rng(SEED)
+        initial = np.empty((NWALKERS, len(NAMES)))
+        for i in range(NWALKERS):
+            for _ in range(10000):
+                candidate = center + rng.normal(size=len(NAMES)) * scale
+                if np.all(candidate > LOWER) and np.all(candidate < UPPER):
+                    initial[i] = candidate
+                    break
+            else:
+                raise RuntimeError("Could not initialize walkers inside prior bounds")
+        backend.reset(NWALKERS, len(NAMES))
+        state = initial
+        print(
+            f"Starting Test 53 MCMC: walkers={NWALKERS}, target={NSTEPS}, "
+            f"burn-in={BURNIN}, processes={NPROCS}",
+            flush=True,
+        )
+
+    completed = int(backend.iteration)
+    sampler = None
+    if completed < NSTEPS:
+        context = mp.get_context("fork")
+        with context.Pool(processes=NPROCS, initializer=silence_worker_log) as pool:
+            sampler = emcee.EnsembleSampler(
+                NWALKERS,
+                len(NAMES),
+                log_probability,
+                pool=pool,
+                backend=backend,
+            )
+            while completed < NSTEPS:
+                chunk = min(10, NSTEPS - completed)
+                state = sampler.run_mcmc(state, chunk, progress=False)
+                completed = int(backend.iteration)
+                (OUT / "checkpoint_status.json").write_text(
+                    json.dumps(
+                        {
+                            "completed_steps": completed,
+                            "target_steps": NSTEPS,
+                            "walkers": NWALKERS,
+                            "resumed_from_steps": resumed_from,
+                        },
+                        indent=2,
+                    )
+                )
+                print(f"MCMC progress: {completed}/{NSTEPS} steps", flush=True)
+    else:
+        print(
+            f"Checkpoint already has {completed} steps, meeting target {NSTEPS}; "
+            "running posterior diagnostics only.",
+            flush=True,
+        )
         sampler = emcee.EnsembleSampler(
             NWALKERS,
             len(NAMES),
             log_probability,
-            pool=pool,
             backend=backend,
         )
-        state = initial
-        completed = 0
-        while completed < NSTEPS:
-            chunk = min(10, NSTEPS - completed)
-            state = sampler.run_mcmc(state, chunk, progress=False)
-            completed += chunk
-            print(f"MCMC progress: {completed}/{NSTEPS} steps", flush=True)
 
     chain = backend.get_chain()
     logp = backend.get_log_prob()
+    actual_steps = int(chain.shape[0])
+    if actual_steps <= BURNIN:
+        raise SystemExit(
+            f"Checkpoint has {actual_steps} steps but burn-in is {BURNIN}; "
+            "more samples are required"
+        )
     post = chain[BURNIN:]
     flat = post.reshape(-1, len(NAMES))
     flat_logp = logp[BURNIN:].reshape(-1)
@@ -183,7 +235,7 @@ def main() -> None:
         and min_ess is not None
         and max_rhat < 1.05
         and min_ess >= 400
-        and np.all((NSTEPS - BURNIN) >= 50 * tau[np.isfinite(tau)])
+        and np.all((actual_steps - BURNIN) >= 50 * tau[np.isfinite(tau)])
     )
 
     summary = {
@@ -193,7 +245,9 @@ def main() -> None:
         "calibration": "A_planck sampled with Gaussian prior sigma=0.0025",
         "uniform_prior_bounds": dict(zip(NAMES, zip(LOWER.tolist(), UPPER.tolist()))),
         "walkers": NWALKERS,
-        "steps": NSTEPS,
+        "target_steps": NSTEPS,
+        "completed_steps": actual_steps,
+        "resumed_from_steps": resumed_from,
         "burnin": BURNIN,
         "posterior_samples": int(flat.shape[0]),
         "mean_acceptance_fraction": float(np.mean(acceptance)),
