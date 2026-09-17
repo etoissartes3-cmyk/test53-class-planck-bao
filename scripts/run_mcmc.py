@@ -17,11 +17,11 @@ from pathlib import Path
 os.environ.setdefault("CALIBRATION", "profile")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
-import corner
 import emcee
 import matplotlib
 
 matplotlib.use("Agg")
+import corner
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -137,7 +137,13 @@ def main() -> None:
             pool=pool,
             backend=backend,
         )
-        sampler.run_mcmc(initial, NSTEPS, progress=True)
+        state = initial
+        completed = 0
+        while completed < NSTEPS:
+            chunk = min(10, NSTEPS - completed)
+            state = sampler.run_mcmc(state, chunk, progress=False)
+            completed += chunk
+            print(f"MCMC progress: {completed}/{NSTEPS} steps", flush=True)
 
     chain = backend.get_chain()
     logp = backend.get_log_prob()
