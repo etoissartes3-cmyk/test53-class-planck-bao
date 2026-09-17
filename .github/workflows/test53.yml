@@ -41,8 +41,14 @@ on:
         required: true
         default: "100"
         type: string
+      mcmc_resume_run_id:
+        description: Previous workflow run ID to resume; leave blank for a new chain
+        required: false
+        default: ""
+        type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -102,6 +108,27 @@ jobs:
           fi
           python scripts/refit_joint_plik_bao.py 2>&1 | tee "joint_${CALIBRATION}_terminal.log"
 
+      - name: Download previous MCMC checkpoint
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'mcmc-profile' && inputs.mcmc_resume_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: test53-${{ inputs.mcmc_resume_run_id }}
+          path: .resume-artifact
+          run-id: ${{ inputs.mcmc_resume_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore previous MCMC checkpoint
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'mcmc-profile' && inputs.mcmc_resume_run_id != ''
+        run: |
+          checkpoint="$(find .resume-artifact -type f -path '*/results_mcmc_profile/chain.h5' -print -quit)"
+          if [[ -z "$checkpoint" ]]; then
+            echo "No results_mcmc_profile/chain.h5 found in the selected artifact" >&2
+            exit 1
+          fi
+          mkdir -p results_mcmc_profile
+          cp "$checkpoint" results_mcmc_profile/chain.h5
+          echo "Restored checkpoint from $checkpoint"
+
       - name: Run full MCMC posterior
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'mcmc-profile'
         env:
@@ -112,6 +139,7 @@ jobs:
           TEST53_MCMC_STEPS: ${{ inputs.mcmc_steps }}
           TEST53_MCMC_BURNIN: ${{ inputs.mcmc_burnin }}
           TEST53_MCMC_PROCESSES: "4"
+          TEST53_MCMC_RESUME: ${{ inputs.mcmc_resume_run_id != '' }}
           OMP_NUM_THREADS: "1"
         run: |
           python scripts/run_mcmc.py 2>&1 | tee mcmc_terminal.log
